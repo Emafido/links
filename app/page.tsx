@@ -2,45 +2,51 @@
 
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Github, Twitter, Linkedin, Link as LinkIcon, QrCode, Plus, Trash2, Copy, Check } from "lucide-react";
+import { Github, Twitter, Linkedin, Link as LinkIcon, QrCode, Plus, Trash2, Copy, Check, Zap } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import { track } from "@vercel/analytics";
 
 const getIcon = (url: string) => {
-  if (url.includes("github.com")) return <Github size={20} />;
-  if (url.includes("twitter.com") || url.includes("x.com")) return <Twitter size={20} />;
-  if (url.includes("linkedin.com")) return <Linkedin size={20} />;
-  return <LinkIcon size={20} />;
+  if (url.includes("github.com")) return <Github size={24} />;
+  if (url.includes("twitter.com") || url.includes("x.com")) return <Twitter size={24} />;
+  if (url.includes("linkedin.com")) return <Linkedin size={24} />;
+  return <LinkIcon size={24} />;
+};
+
+const getDomain = (url: string) => {
+  try {
+    const domain = new URL(url).hostname.replace('www.', '');
+    const path = new URL(url).pathname !== '/' ? new URL(url).pathname : '';
+    return domain + path;
+  } catch {
+    return url;
+  }
 };
 
 export default function LinkBuilder() {
   const [isViewing, setIsViewing] = useState(false);
-  const [profile, setProfile] = useState({ name: "", links: [{ title: "", url: "" }] });
-  const [shareUrl, setShareUrl] = useState("");
+  const [profile, setProfile] = useState({ name: "", bio: "", links: [{ title: "", url: "" }] });
   const [copied, setCopied] = useState(false);
 
+  const shareUrl = typeof window !== "undefined" && profile.name
+    ? `${window.location.origin}?d=${btoa(JSON.stringify(profile))}`
+    : "";
+
   useEffect(() => {
-    // Check if we are viewing a generated profile via the URL parameter
     const params = new URLSearchParams(window.location.search);
     const data = params.get("d");
     if (data) {
-      try {
-        setProfile(JSON.parse(atob(data)));
-        setIsViewing(true);
-      } catch (e) {
-        console.error("Invalid data in URL");
-      }
+      // Defer state update to bypass the synchronous setState warning
+      setTimeout(() => {
+        try {
+          setProfile(JSON.parse(atob(data)));
+          setIsViewing(true);
+        } catch {
+          console.error("Invalid data in URL");
+        }
+      }, 0);
     }
   }, []);
-
-  useEffect(() => {
-    // Generate the shareable URL whenever the profile changes
-    if (typeof window !== "undefined" && profile.name) {
-      const encoded = btoa(JSON.stringify(profile));
-      setShareUrl(`${window.location.origin}?d=${encoded}`);
-    } else {
-      setShareUrl("");
-    }
-  }, [profile]);
 
   const addLink = () => setProfile({ ...profile, links: [...profile.links, { title: "", url: "" }] });
   
@@ -60,67 +66,114 @@ export default function LinkBuilder() {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch (err) {
+    } catch {
       console.error("Failed to copy URL");
     }
   };
 
-  // --- VIEW MODE: What users see when they scan the QR or click the link ---
   if (isViewing) {
     return (
-      <main className="min-h-screen bg-[#0a0a0a] flex items-center justify-center p-4 font-sans text-white">
+      <main className="relative min-h-screen bg-[#0a0a0a] flex flex-col items-center pt-16 pb-8 px-4 sm:justify-center sm:py-6 font-sans text-white overflow-hidden">
+       <div className="absolute inset-0 bg-[linear-gradient(to_right,#333_1px,transparent_1px),linear-gradient(to_bottom,#333_1px,transparent_1px)] bg-size-[32px_32px] mask-[radial-gradient(ellipse_60%_50%_at_50%_0%,#000_70%,transparent_100%)] opacity-40 pointer-events-none"></div>
+
         <motion.div 
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="w-full max-w-md flex flex-col items-center"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+          className="w-full max-w-md flex flex-col items-center relative z-10"
         >
+          <motion.div 
+            initial={{ scale: 0 }} 
+            animate={{ scale: 1 }} 
+            transition={{ type: "spring", stiffness: 200, damping: 15 }}
+            className="w-20 h-20 sm:w-24 sm:h-24 bg-[#ccff00] rounded-full flex items-center justify-center text-black text-3xl sm:text-4xl font-black mb-4 shadow-[0_0_40px_rgba(204,255,0,0.2)]"
+          >
+            {profile.name.charAt(0).toUpperCase()}
+          </motion.div>
+
           <motion.h1 
-            initial={{ y: -20 }} animate={{ y: 0 }} 
-            className="text-4xl font-extrabold tracking-tight mb-8 text-[#ccff00]"
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            className="text-3xl sm:text-4xl font-black tracking-tight mb-1 text-white text-center"
           >
             {profile.name}
           </motion.h1>
+
+          {profile.bio && (
+            <motion.p 
+              initial={{ opacity: 0 }} 
+              animate={{ opacity: 1 }} 
+              transition={{ delay: 0.1 }}
+              className="text-gray-400 text-center mb-8 px-4 font-medium"
+            >
+              {profile.bio}
+            </motion.p>
+          )}
           
-          <div className="w-full space-y-4">
+          <div className="w-full space-y-3 sm:space-y-4 mb-12">
             {profile.links.map((link, i) => (
               <motion.a
                 key={i}
                 href={link.url}
                 target="_blank"
                 rel="noopener noreferrer"
-                initial={{ opacity: 0, x: -20 }}
+                onClick={() => track("link_clicked", { url: link.url, title: link.title })}
+                initial={{ opacity: 0, x: -50 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.1 }}
-                whileHover={{ scale: 1.03, y: -4, boxShadow: "4px 4px 0px 0px #ccff00" }}
-                whileTap={{ scale: 0.98, y: 0, boxShadow: "0px 0px 0px 0px #ccff00" }}
-                className="flex items-center justify-between w-full bg-[#1a1a1a] border-2 border-[#333] p-4 rounded-xl font-bold transition-colors hover:border-[#ccff00]"
+                transition={{ delay: i * 0.1, type: "spring", stiffness: 100 }}
+                whileHover={{ scale: 1.02, rotate: -1, boxShadow: "6px 6px 0px 0px #ccff00" }}
+                whileTap={{ scale: 0.98, boxShadow: "0px 0px 0px 0px #ccff00" }}
+                className="flex items-center gap-4 w-full bg-[#1a1a1a]/90 backdrop-blur-md border-2 border-[#333] p-3 sm:p-4 rounded-2xl font-bold transition-colors hover:border-[#ccff00] hover:bg-[#1a1a1a] group"
               >
-                <span className="flex items-center gap-3">
-                  {getIcon(link.url)} {link.title}
-                </span>
+                <div className="p-2 sm:p-3 bg-[#333] rounded-xl group-hover:bg-[#ccff00] group-hover:text-black transition-colors">
+                  {getIcon(link.url)}
+                </div>
+                <div className="flex flex-col text-left overflow-hidden">
+                  <span className="text-base sm:text-lg text-white group-hover:text-[#ccff00] transition-colors truncate">{link.title}</span>
+                  <span className="text-xs sm:text-sm text-gray-500 truncate mt-0.5">
+                    {getDomain(link.url)}
+                  </span>
+                </div>
               </motion.a>
             ))}
           </div>
+
+          <motion.a
+            href="/"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.5 }}
+            className="flex items-center gap-2 text-sm text-gray-500 hover:text-[#ccff00] transition-colors font-bold"
+          >
+            <Zap size={16} /> Build your own hub
+          </motion.a>
         </motion.div>
       </main>
     );
   }
 
-  // --- EDIT MODE: Where the user builds their profile ---
   return (
-    <main className="min-h-screen bg-[#0a0a0a] text-white p-6 flex flex-col md:flex-row gap-12 justify-center items-start pt-20">
-      
-      {/* Editor Form */}
+    <main className="min-h-screen bg-[#0a0a0a] text-white p-6 flex flex-col md:flex-row gap-12 justify-center items-start pt-12 md:pt-20">
       <div className="w-full max-w-md space-y-8">
         <div>
-          <h2 className="text-3xl font-black text-[#ccff00] mb-2">Build Your Hub</h2>
-          <input
-            type="text"
-            placeholder="Your Name"
-            value={profile.name}
-            onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-            className="w-full bg-[#1a1a1a] border-2 border-[#333] rounded-xl p-4 font-bold focus:outline-none focus:border-[#ccff00] transition-colors"
-          />
+          <h2 className="text-3xl font-black text-[#ccff00] mb-6">Build Your Hub</h2>
+          <div className="space-y-4">
+            <input
+              type="text"
+              placeholder="Your Name"
+              value={profile.name}
+              onChange={(e) => setProfile({ ...profile, name: e.target.value })}
+              className="w-full bg-[#1a1a1a] border-2 border-[#333] rounded-xl p-4 font-bold focus:outline-none focus:border-[#ccff00] transition-colors"
+            />
+            <textarea
+              placeholder="Short Bio or Headline"
+              value={profile.bio}
+              maxLength={100}
+              rows={2}
+              onChange={(e) => setProfile({ ...profile, bio: e.target.value })}
+              className="w-full bg-[#1a1a1a] border-2 border-[#333] rounded-xl p-4 font-bold focus:outline-none focus:border-[#ccff00] transition-colors resize-none"
+            />
+          </div>
         </div>
 
         <div className="space-y-4">
@@ -160,7 +213,6 @@ export default function LinkBuilder() {
         </div>
       </div>
 
-      {/* Output / QR Code & Actions */}
       <div className="w-full max-w-sm bg-[#1a1a1a] border-2 border-[#333] p-8 rounded-3xl flex flex-col items-center text-center sticky top-20">
         <h3 className="text-xl font-bold mb-6 flex items-center gap-2">
           <QrCode className="text-[#ccff00]" /> Your QR Code
@@ -192,7 +244,6 @@ export default function LinkBuilder() {
           </a>
         </div>
       </div>
-
     </main>
   );
 }
